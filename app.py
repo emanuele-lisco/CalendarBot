@@ -44,7 +44,19 @@ def invia_risposta(numero, testo):
 
 def crea_evento(testo, numero):
     try:
-        data = dateparser.parse(testo, languages=["it"])
+        settings = {
+    "PREFER_DATES_FROM": "future",
+    "RETURN_AS_TIMEZONE_AWARE": False,
+    "TIMEZONE": "Europe/Rome",
+    "DATE_ORDER": "DMY"
+}
+
+data = dateparser.parse(
+    testo,
+    languages=["it"],
+    settings=settings
+)
+
         if not data:
             invia_risposta(
                 numero,
