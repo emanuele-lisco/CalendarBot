@@ -18,9 +18,7 @@ PHONE_NUMBER_ID = os.environ["PHONE_NUMBER_ID"]
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
-creds = service_account.Credentials.from_service_account_info(
-    creds_info, scopes=SCOPES
-)
+creds = service_account.Credentials.from_service_account_info(creds_info, scopes=SCOPES)
 service = build("calendar", "v3", credentials=creds)
 
 
@@ -35,7 +33,6 @@ def invia_risposta(numero, testo):
         "to": numero,
         "text": {"body": testo}
     }
-    # Non blocchiamo il bot se WhatsApp API fallisce
     try:
         requests.post(url, headers=headers, json=payload, timeout=10)
     except Exception:
@@ -44,18 +41,19 @@ def invia_risposta(numero, testo):
 
 def crea_evento(testo, numero):
     try:
+        # Migliora il parsing in italiano e nel formato europeo (DMY)
         settings = {
-    "PREFER_DATES_FROM": "future",
-    "RETURN_AS_TIMEZONE_AWARE": False,
-    "TIMEZONE": "Europe/Rome",
-    "DATE_ORDER": "DMY"
-}
+            "PREFER_DATES_FROM": "future",
+            "RETURN_AS_TIMEZONE_AWARE": False,
+            "TIMEZONE": "Europe/Rome",
+            "DATE_ORDER": "DMY",
+        }
 
-data = dateparser.parse(
-    testo,
-    languages=["it"],
-    settings=settings
-)
+        data = dateparser.parse(
+            testo,
+            languages=["it"],
+            settings=settings
+        )
 
         if not data:
             invia_risposta(
