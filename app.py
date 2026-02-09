@@ -162,7 +162,12 @@ def crea_evento(testo, numero):
             "end": {"dateTime": (dt + timedelta(hours=1)).isoformat(), "timeZone": "Europe/Rome"},
         }
 
-        service.events().insert(calendarId="primary", body=evento).execute()
+        calendar_id = os.environ.get("GCAL_CALENDAR_ID", "primary")
+        created = service.events().insert(calendarId=calendar_id, body=evento).execute()
+
+        if not created or not created.get("id"):
+          raise Exception("Inserimento evento fallito (nessun id restituito).")
+
 
         invia_risposta(
             numero,
