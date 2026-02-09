@@ -168,11 +168,22 @@ def crea_evento(testo, numero):
         if not created or not created.get("id"):
           raise Exception("Inserimento evento fallito (nessun id restituito).")
 
+        
+        event_id = created.get("id")
+        html_link = created.get("htmlLink", "")
+        calendar_id = os.environ.get("GCAL_CALENDAR_ID", "primary")
 
-        invia_risposta(
-            numero,
-            f"ho aggiunto un nuovo impegno il {dt.strftime('%d/%m/%y')} alle {dt.strftime('%H:%M')}. Evento: {testo}"
+        msg = (
+            f"ho aggiunto un nuovo impegno il {dt.strftime('%d/%m/%y')} alle {dt.strftime('%H:%M')}.\n"
+            f"Evento: {testo}\n"
+            f"CalendarId: {calendar_id}\n"
+            f"EventId: {event_id}"
         )
+        
+        if html_link:
+        msg += f"\nLink: {html_link}"
+
+        invia_risposta(numero, msg)
 
     except Exception as e:
         invia_risposta(
