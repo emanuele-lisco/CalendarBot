@@ -2,25 +2,27 @@ from flask import Flask, request
 import requests
 import dateparser
 from datetime import timedelta
+import os, json
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-import os, json
-
 app = Flask(__name__)
 
+# --- ENV VARS (Render) ---
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "909404")
-WHATSAPP_TOKEN = "EAFyhS7Og6AgBQna7XPQHl568dbWSDZBwz10hpWZBvpcBohlFTWHeo6C5X6ZBKkoUzK0hcfdFDybHEZBAZCrWqt5hnSMhlxirgXymZAnvHJkEv78uHuZC1MHHiEUSIAa0zrjNgvALxxnZCE4TOWZC5opPEg5x6t62w6rSmTfAfDqZCkZBZAKUlTM1FnThS8seG8giOvjIDYDOcyxE41Gb5fZBQJz0UBlg4ZBzVCYQQ2yZAqizgwrtQcjsGIZBu5eIWQ6vucZCQtQLuktzPAk5UZBjnVNSLHoqSaH0Rv"
-PHONE_NUMBER_ID = "1049838774869249"
+WHATSAPP_TOKEN = os.environ["WHATSAPP_TOKEN"]
+PHONE_NUMBER_ID = os.environ["PHONE_NUMBER_ID"]
 
+# --- GOOGLE CALENDAR (Service Account via ENV JSON) ---
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
 creds = service_account.Credentials.from_service_account_info(
     creds_info, scopes=SCOPES
 )
-
 service = build("calendar", "v3", credentials=creds)
+
 
 def invia_risposta(numero, testo):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
@@ -33,40 +35,78 @@ def invia_risposta(numero, testo):
         "to": numero,
         "text": {"body": testo}
     }
-    requests.post(url, headers=headers, json=payload)
+    # Non blocchiamo il bot se WhatsApp API fallisce
+    try:
+        requests.post(url, headers=headers, json=payload, timeout=10)
+    except Exception:
+        pass
+
 
 def crea_evento(testo, numero):
     try:
-        data = dateparser.parse(testo, languages=['it'])
+        data = dateparser.parse(testo, languages=["it"])
         if not data:
-            invia_risposta(numero, "Non riesco a capire data e ora.")
+            invia_risposta(
+                numero,
+                "Non sono riuscito ad aggiungere il nuovo impegno, questo è il mio messaggio di errore: 'data e ora non riconosciute'"
+            )
             return
 
         evento = {
-            'summary': testo,
-            'start': {'dateTime': data.isoformat(), 'timeZone': 'Europe/Rome'},
-            'end': {'dateTime': (data + timedelta(hours=1)).isoformat(), 'timeZone': 'Europe/Rome'}
+            "summary": testo,
+            "start": {"dateTime": data.isoformat(), "timeZone": "Europe/Rome"},
+            "end": {"dateTime": (data + timedelta(hours=1)).isoformat(), "timeZone": "Europe/Rome"},
         }
 
-        service.events().insert(calendarId='primary', body=evento).execute()
+        service.events().insert(calendarId="primary", body=evento).execute()
 
-        invia_risposta(numero, f"Ho aggiunto un nuovo impegno il {data.strftime('%d/%m/%y')}. Evento: {testo}")
+        invia_risposta(
+            numero,
+            f"ho aggiunto un nuovo impegno il {data.strftime('%d/%m/%y')}. Evento: {testo}"
+        )
 
     except Exception as e:
-        invia_risposta(numero, f"Errore: {str(e)}")
+        invia_risposta(
+            numero,
+            f"Non sono riuscito ad aggiungere il nuovo impegno, questo è il mio messaggio di errore: '{str(e)}'"
+        )
+
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+    # --- Verification handshake (Meta) ---
     if request.method == "GET":
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge")
+            return request.args.get("hub.challenge", "")
         return "Errore", 403
 
+    # --- Incoming events (Meta) ---
     data = request.json
-    msg = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
-    numero = data["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
+    try:
+        value = data["entry"][0]["changes"][0]["value"]
 
-    crea_evento(msg, numero)
+        # a volte arrivano status / other events senza "messages"
+        messages = value.get("messages", [])
+        if not messages:
+            return "ok", 200
+
+        msg_obj = messages[0]
+        numero = msg_obj.get("from")
+
+        # supporto solo testo per ora
+        testo = (msg_obj.get("text") or {}).get("body")
+        if not testo or not numero:
+            return "ok", 200
+
+        crea_evento(testo, numero)
+
+    except Exception:
+        # non facciamo fallire la chiamata webhook di Meta
+        return "ok", 200
+
     return "ok", 200
 
-app.run(host="0.0.0.0", port=10000)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
