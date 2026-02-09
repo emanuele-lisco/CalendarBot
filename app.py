@@ -5,16 +5,22 @@ from datetime import timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+import os, json
+
 app = Flask(__name__)
 
 VERIFY_TOKEN = "909404"
 WHATSAPP_TOKEN = "EAFyhS7Og6AgBQna7XPQHl568dbWSDZBwz10hpWZBvpcBohlFTWHeo6C5X6ZBKkoUzK0hcfdFDybHEZBAZCrWqt5hnSMhlxirgXymZAnvHJkEv78uHuZC1MHHiEUSIAa0zrjNgvALxxnZCE4TOWZC5opPEg5x6t62w6rSmTfAfDqZCkZBZAKUlTM1FnThS8seG8giOvjIDYDOcyxE41Gb5fZBQJz0UBlg4ZBzVCYQQ2yZAqizgwrtQcjsGIZBu5eIWQ6vucZCQtQLuktzPAk5UZBjnVNSLHoqSaH0Rv"
 PHONE_NUMBER_ID = "1049838774869249"
 
-SCOPES = ['https://www.googleapis.com/auth/calendar']
-creds = service_account.Credentials.from_service_account_file(
-    'credentials.json', scopes=SCOPES)
-service = build('calendar', 'v3', credentials=creds)
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
+creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
+creds = service_account.Credentials.from_service_account_info(
+    creds_info, scopes=SCOPES
+)
+
+service = build("calendar", "v3", credentials=creds)
 
 def invia_risposta(numero, testo):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
