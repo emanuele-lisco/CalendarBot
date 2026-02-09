@@ -1,6 +1,6 @@
 from flask import Flask, request
 import requests
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 import os, json
 import re
 
@@ -29,36 +29,45 @@ WEEKDAYS_IT = [
     "giovedì", "giovedi", "venerdì", "venerdi", "sabato", "domenica"
 ]
 
+
 def invia_risposta(numero, testo):
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
-    payload = {"messaging_product": "whatsapp", "to": numero, "text": {"body": testo}}
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "text": {"body": testo}
+    }
     try:
         requests.post(url, headers=headers, json=payload, timeout=10)
     except Exception:
         pass
 
+
 def _clean_text(t: str) -> str:
     t = (t or "").strip().lower()
-    # normalizzazioni utili
     t = t.replace("alle", " ").replace("ore", " ")
     t = t.replace("di mattina", " am").replace("del mattino", " am")
     t = t.replace("di sera", " pm").replace("della sera", " pm")
     t = t.replace("di pomeriggio", " pm")
-    # rimuove virgole e doppie spaziature
     t = re.sub(r"[,\.;]+", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
-def _apply_am_pm(hour: int, marker: str | None) -> int:
+
+def _apply_am_pm(hour: int, marker):
     if not marker:
         return hour
-    marker = marker.strip().lower()
+    marker = str(marker).strip().lower()
     if marker == "pm" and hour < 12:
         return hour + 12
     if marker == "am" and hour == 12:
         return 0
     return hour
+
 
 def estrai_data_ora(testo: str):
     """
@@ -92,7 +101,10 @@ def estrai_data_ora(testo: str):
         return datetime(base.year, base.month, base.day, hh, mm)
 
     # 2) formato numerico: dd/mm[/yyyy] + ora
-    m = re.search(r"\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", t)
+    m = re.search(
+        r"\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+        t
+    )
     if m:
         dd = int(m.group(1))
         mo = int(m.group(2))
@@ -116,7 +128,10 @@ def estrai_data_ora(testo: str):
 
     # 3) formato testuale: dd mese [yyyy] + ora
     mesi_regex = "|".join(MONTHS_IT.keys())
-    m = re.search(rf"\b(\d{{1,2}})\s+({mesi_regex})(?:\s+(\d{{2,4}}))?\b\s+(\d{{1,2}})(?::(\d{{2}}))?\s*(am|pm)?", t)
+    m = re.search(
+        rf"\b(\d{{1,2}})\s+({mesi_regex})(?:\s+(\d{{2,4}}))?\b\s+(\d{{1,2}})(?::(\d{{2}}))?\s*(am|pm)?",
+        t
+    )
     if m:
         dd = int(m.group(1))
         mo = MONTHS_IT[m.group(2)]
@@ -138,8 +153,8 @@ def estrai_data_ora(testo: str):
         except ValueError:
             return None
 
-    # 4) se c'è una data ma NON c'è ora -> None (per evitare eventi senza orario)
     return None
+
 
 def crea_evento(testo, numero):
     try:
@@ -166,12 +181,10 @@ def crea_evento(testo, numero):
         created = service.events().insert(calendarId=calendar_id, body=evento).execute()
 
         if not created or not created.get("id"):
-          raise Exception("Inserimento evento fallito (nessun id restituito).")
+            raise Exception("Inserimento evento fallito (nessun id restituito).")
 
-        
         event_id = created.get("id")
         html_link = created.get("htmlLink", "")
-        calendar_id = os.environ.get("GCAL_CALENDAR_ID", "primary")
 
         msg = (
             f"ho aggiunto un nuovo impegno il {dt.strftime('%d/%m/%y')} alle {dt.strftime('%H:%M')}.\n"
@@ -179,9 +192,9 @@ def crea_evento(testo, numero):
             f"CalendarId: {calendar_id}\n"
             f"EventId: {event_id}"
         )
-        
+
         if html_link:
-        msg += f"\nLink: {html_link}"
+            msg += f"\nLink: {html_link}"
 
         invia_risposta(numero, msg)
 
@@ -190,6 +203,7 @@ def crea_evento(testo, numero):
             numero,
             f"Non sono riuscito ad aggiungere il nuovo impegno, questo è il mio messaggio di errore: '{str(e)}'"
         )
+
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
@@ -212,10 +226,12 @@ def webhook():
             return "ok", 200
 
         crea_evento(testo, numero)
+
     except Exception:
         return "ok", 200
 
     return "ok", 200
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
