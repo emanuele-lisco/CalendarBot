@@ -156,6 +156,34 @@ def estrai_data_ora(testo: str):
     return None
 
 
+def estrai_titolo_evento(testo: str) -> str:
+    """
+    Rimuove la parte di data/ora dal messaggio e lascia solo il titolo evento.
+    Esempio: "11/02 09:00 lezione" -> "lezione"
+    """
+    t = (testo or "").strip()
+
+    # Rimuove "oggi/domani/dopodomani HH[:MM]"
+    t = re.sub(r"(?i)\b(oggi|domani|dopodomani)\b\s+\d{1,2}(?::\d{2})?\s*(am|pm)?", "", t).strip()
+
+    # Rimuove "dd/mm[/yyyy] HH[:MM]"
+    t = re.sub(r"(?i)\b\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?\b\s+\d{1,2}(?::\d{2})?\s*(am|pm)?", "", t).strip()
+
+    # Rimuove "dd mese [yyyy] HH[:MM]"
+    mesi_regex = "|".join(MONTHS_IT.keys())
+    t = re.sub(
+        rf"(?i)\b\d{{1,2}}\s+({mesi_regex})(?:\s+\d{{2,4}})?\b\s+\d{{1,2}}(?::\d{{2}})?\s*(am|pm)?",
+        "",
+        t
+    ).strip()
+
+    # Ripulisce eventuali separatori rimasti all'inizio
+    t = re.sub(r"^[\-\:\,\.]+\s*", "", t).strip()
+    t = re.sub(r"\s+", " ", t).strip()
+
+    return t if t else "Impegno"
+
+
 def crea_evento(testo, numero):
     try:
         dt = estrai_data_ora(testo)
@@ -171,8 +199,11 @@ def crea_evento(testo, numero):
             )
             return
 
+        titolo = estrai_titolo_evento(testo)
+
         evento = {
-            "summary": testo,
+            "summary": titolo,                 # titolo pulito (es. "lezione")
+            "description": testo,              # (opzionale) salva il testo originale
             "start": {"dateTime": dt.isoformat(), "timeZone": "Europe/Rome"},
             "end": {"dateTime": (dt + timedelta(hours=1)).isoformat(), "timeZone": "Europe/Rome"},
         }
@@ -188,7 +219,7 @@ def crea_evento(testo, numero):
 
         msg = (
             f"ho aggiunto un nuovo impegno il {dt.strftime('%d/%m/%y')} alle {dt.strftime('%H:%M')}.\n"
-            f"Evento: {testo}\n"
+            f"Evento: {titolo}\n"
             f"CalendarId: {calendar_id}\n"
             f"EventId: {event_id}"
         )
