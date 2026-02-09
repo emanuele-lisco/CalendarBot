@@ -1,8 +1,10 @@
 from flask import Flask, request
 import requests
-import dateparser
 from datetime import timedelta
 import os, json
+
+import dateparser
+from dateparser.search import search_dates
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -39,23 +41,41 @@ def invia_risposta(numero, testo):
         pass
 
 
+def estrai_data_ora(testo: str):
+    """
+    Estrae una data/ora da una frase in italiano usando search_dates (più robusto).
+    Restituisce un datetime oppure None.
+    """
+    settings = {
+        "PREFER_DATES_FROM": "future",
+        "RETURN_AS_TIMEZONE_AWARE": False,
+        "TIMEZONE": "Europe/Rome",
+        "DATE_ORDER": "DMY",
+    }
+
+    # Normalizzazione minima per aiutare il parser
+    testo_norm = (testo or "").strip().lower()
+    testo_norm = testo_norm.replace(" alle ", " ")
+    testo_norm = testo_norm.replace(" ore ", " ")
+    testo_norm = testo_norm.replace(" di mattina", " am")
+    testo_norm = testo_norm.replace(" del mattino", " am")
+    testo_norm = testo_norm.replace(" di sera", " pm")
+    testo_norm = testo_norm.replace(" della sera", " pm")
+    testo_norm = testo_norm.replace(" di pomeriggio", " pm")
+
+    found = search_dates(testo_norm, languages=["it"], settings=settings)
+    if not found:
+        return None
+
+    # Prendiamo la prima data trovata
+    return found[0][1]
+
+
 def crea_evento(testo, numero):
     try:
-        # Migliora il parsing in italiano e nel formato europeo (DMY)
-        settings = {
-            "PREFER_DATES_FROM": "future",
-            "RETURN_AS_TIMEZONE_AWARE": False,
-            "TIMEZONE": "Europe/Rome",
-            "DATE_ORDER": "DMY",
-        }
+        dt = estrai_data_ora(testo)
 
-        data = dateparser.parse(
-            testo,
-            languages=["it"],
-            settings=settings
-        )
-
-        if not data:
+        if not dt:
             invia_risposta(
                 numero,
                 "Non sono riuscito ad aggiungere il nuovo impegno, questo è il mio messaggio di errore: 'data e ora non riconosciute'"
@@ -64,15 +84,15 @@ def crea_evento(testo, numero):
 
         evento = {
             "summary": testo,
-            "start": {"dateTime": data.isoformat(), "timeZone": "Europe/Rome"},
-            "end": {"dateTime": (data + timedelta(hours=1)).isoformat(), "timeZone": "Europe/Rome"},
+            "start": {"dateTime": dt.isoformat(), "timeZone": "Europe/Rome"},
+            "end": {"dateTime": (dt + timedelta(hours=1)).isoformat(), "timeZone": "Europe/Rome"},
         }
 
         service.events().insert(calendarId="primary", body=evento).execute()
 
         invia_risposta(
             numero,
-            f"ho aggiunto un nuovo impegno il {data.strftime('%d/%m/%y')}. Evento: {testo}"
+            f"ho aggiunto un nuovo impegno il {dt.strftime('%d/%m/%y')} alle {dt.strftime('%H:%M')}. Evento: {testo}"
         )
 
     except Exception as e:
